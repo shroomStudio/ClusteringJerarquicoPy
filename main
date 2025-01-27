@@ -1,0 +1,113 @@
+import numpy as np
+from scipy.cluster.hierarchy import linkage, dendrogram, fcluster
+from sklearn.cluster import KMeans
+import matplotlib.pyplot as plt
+from collections import Counter
+
+def digital_to_percentage(value):
+    table = {
+        1023: 0, 1003: 6.19, 983: 12.38, 963: 18.58, 943: 24.77, 923: 30.96, 903: 37.15,
+        883: 43.34, 863: 49.54, 843: 55.73, 823: 61.92, 803: 68.11, 783: 74.3, 763: 80.5,
+        743: 86.69, 723: 92.88, 703: 99.07
+    }
+    keys = sorted(table.keys(), reverse=True)
+    for i in range(len(keys) - 1):
+        if keys[i] >= value > keys[i + 1]:
+            v1, p1 = keys[i], table[keys[i]]
+            v2, p2 = keys[i + 1], table[keys[i + 1]]
+            return p1 + (p2 - p1) * (value - v1) / (v2 - v1)
+    return table.get(value, None)
+
+def capture_readings(num_leds, led_colors, macronutrient):
+    readings = {}
+    for color in led_colors:
+        while True:
+            try:
+                num_readings = int(input(f"Ingrese el número de lecturas para el LED {color}: "))
+                break
+            except ValueError:
+                print("Por favor, ingrese un número entero válido.")
+        
+        print(f"Ingrese las {num_readings} lecturas digitales para el LED {color}, separadas por comas:")
+        while True:
+            try:
+                digital_values = list(map(int, input().split(',')))
+                if len(digital_values) != num_readings:
+                    raise ValueError(f"Debe ingresar exactamente {num_readings} lecturas.")
+                break
+            except ValueError as e:
+                print(f"Error: {e}. Por favor, intente nuevamente.")
+
+        readings[color] = digital_values
+    return readings
+
+def perform_clustering(readings):
+    percentages = []
+    for color, values in readings.items():
+        percentages.extend([digital_to_percentage(v) for v in values])
+    
+    # Convert to numpy array for clustering
+    data = np.array(percentages).reshape(-1, 1)
+    linked = linkage(data, method='ward')
+    return linked, data
+
+def plot_dendrogram(linked, title):
+    plt.figure(figsize=(10, 7))
+    dendrogram(linked, orientation='top', distance_sort='descending', show_leaf_counts=True)
+    plt.title(title)
+    plt.xlabel('Índice de muestra')
+    plt.ylabel('Distancia Euclidiana')
+    plt.show()
+
+def perform_kmeans(data, n_clusters=5):
+    kmeans = KMeans(n_clusters=n_clusters, random_state=42)
+    kmeans.fit(data)
+    return kmeans.labels_
+
+def main():
+    print("Configuración inicial del Multímetro Agrónomo")
+    while True:
+        try:
+            num_leds = int(input("Ingrese el número de LEDs: "))
+            break
+        except ValueError:
+            print("Por favor, ingrese un número entero válido.")
+
+    led_colors = []
+    for i in range(num_leds):
+        color = input(f"Ingrese el color del LED {i + 1}: ")
+        led_colors.append(color)
+
+    macronutrients = ['fosforo', 'nitrogeno', 'potasio']
+    all_readings = {}
+
+    for nutrient in macronutrients:
+        print(f"\nIngrese las lecturas para {nutrient}:")
+        readings = capture_readings(num_leds, led_colors, nutrient)
+        all_readings[nutrient] = readings
+
+    # Perform hierarchical clustering and k-means for each macronutrient
+    for nutrient, readings in all_readings.items():
+        linked, data = perform_clustering(readings)
+        print(f"\nResultados del clustering jerárquico para {nutrient}:")
+        clusters = fcluster(linked, 5, criterion='maxclust')
+        print(f"Clusters jerárquicos asignados: {clusters}")
+        plot_dendrogram(linked, f"Clustering Jerárquico - {nutrient.capitalize()}")
+
+        # Apply k-means clustering
+        kmeans_labels = perform_kmeans(data, n_clusters=5)
+        print(f"Clusters K-means asignados para {nutrient}: {kmeans_labels}")
+
+        # Map k-means clusters to saturation levels
+        saturation_levels = ['Muy Baja', 'Baja', 'Media', 'Alta', 'Muy Alta']
+        labeled_saturations = [saturation_levels[label] for label in kmeans_labels]
+
+        # Count occurrences of each saturation level
+        counter = Counter(labeled_saturations)
+        max_count = max(counter.values())
+        most_common_saturations = [level for level, count in counter.items() if count == max_count]
+
+        print(f"Niveles de saturación más frecuentes para {nutrient}: {', '.join(most_common_saturations)}")
+
+if __name__ == "__main__":
+    main()
